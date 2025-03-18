@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot Admin - Settings</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        .sidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            padding: 48px 0 0;
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+            width: 250px;
+            background-color: #f8f9fa;
+        }
+        .sidebar-sticky {
+            height: calc(100vh - 48px);
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        .nav-link {
+            font-weight: 500;
+            color: #333;
+            padding: 0.5rem 1rem;
+        }
+        .nav-link.active {
+            color: #007bff;
+        }
+        .nav-link:hover {
+            color: #0056b3;
+        }
+        .main-content {
+            margin-left: 250px;
+            padding: 48px 15px 0;
+        }
+        @media (max-width: 767.98px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                padding-top: 15px;
+            }
+            .main-content {
+                margin-left: 0;
+                padding-top: 15px;
+            }
+        }
+        .form-label {
+            font-weight: 500;
+        }
+        .api-key-field {
+            font-family: monospace;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navbar -->
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">WhatsApp Bot Admin</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarCollapse">
+                <ul class="navbar-nav me-auto mb-2 mb-md-0">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/settings">Settings</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+                <div class="position-sticky sidebar-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="/dashboard">
+                                <i class="bi bi-speedometer2 me-2"></i>
+                                Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="/settings">
+                                <i class="bi bi-gear me-2"></i>
+                                Settings
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/logout">
+                                <i class="bi bi-box-arrow-right me-2"></i>
+                                Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">Bot Settings</h1>
+                </div>
+
+                <!-- Alerts -->
+                <div id="success-alert" class="alert alert-success alert-dismissible fade show d-none" role="alert">
+                    Settings saved successfully! The bot has been updated with the new settings.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                <div id="error-alert" class="alert alert-danger alert-dismissible fade show d-none" role="alert">
+                    Error saving settings. Please try again.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+
+                <form id="settings-form">
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="card-title mb-0">OpenAI API</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="openaiApiKey" class="form-label">OpenAI API Key</label>
+                                        <input type="text" class="form-control api-key-field" id="openaiApiKey" name="openaiApiKey" placeholder="sk-...">
+                                        <div class="form-text">Your OpenAI API key for ChatGPT responses.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">Tourvisor API</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="tourvisorLogin" class="form-label">Tourvisor Login</label>
+                                        <input type="text" class="form-control" id="tourvisorLogin" name="tourvisorLogin">
+                                        <div class="form-text">Your Tourvisor login for the travel API.</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="tourvisorPass" class="form-label">Tourvisor Password</label>
+                                        <input type="password" class="form-control" id="tourvisorPass" name="tourvisorPass">
+                                        <div class="form-text">Your Tourvisor password for the travel API.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="card-title mb-0">Bot Configuration</h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="systemPrompt" class="form-label">System Prompt</label>
+                                        <textarea class="form-control" id="systemPrompt" name="systemPrompt" rows="5"></textarea>
+                                        <div class="form-text">The system prompt that defines the bot's personality and behavior.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+                        <button type="button" id="reset-btn" class="btn btn-outline-secondary me-md-2">Reset to Defaults</button>
+                        <button type="submit" id="save-btn" class="btn btn-primary">Save Settings</button>
+                    </div>
+                </form>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const socket = io();
+            const settingsForm = document.getElementById('settings-form');
+            const successAlert = document.getElementById('success-alert');
+            const errorAlert = document.getElementById('error-alert');
+            const resetBtn = document.getElementById('reset-btn');
+            
+            // Load current settings
+            fetchSettings();
+            
+            // Form submission
+            settingsForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = {
+                    openaiApiKey: document.getElementById('openaiApiKey').value,
+                    tourvisorLogin: document.getElementById('tourvisorLogin').value,
+                    tourvisorPass: document.getElementById('tourvisorPass').value,
+                    systemPrompt: document.getElementById('systemPrompt').value
+                };
+                
+                saveSettings(formData);
+            });
+            
+            // Reset button
+            resetBtn.addEventListener('click', function() {
+                fetchSettings();
+            });
+            
+            // Fetch settings from API
+            function fetchSettings() {
+                fetch('/api/settings')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch settings');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        document.getElementById('openaiApiKey').value = data.openaiApiKey || '';
+                        document.getElementById('tourvisorLogin').value = data.tourvisorLogin || '';
+                        document.getElementById('tourvisorPass').value = data.tourvisorPass || '';
+                        document.getElementById('systemPrompt').value = data.systemPrompt || '';
+                    })
+                    .catch(error => {
+                        console.error('Error fetching settings:', error);
+                        showAlert(errorAlert, 'Failed to load settings. Please refresh the page.');
+                    });
+            }
+            
+            // Save settings via API
+            function saveSettings(settings) {
+                fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to save settings');
+                    }
+                    return response.json();
+                })
+                .then(() => {
+                    showAlert(successAlert);
+                })
+                .catch(error => {
+                    console.error('Error saving settings:', error);
+                    showAlert(errorAlert);
+                });
+            }
+            
+            // Show alert message
+            function showAlert(alertElement, customMessage) {
+                // Hide all other alerts
+                document.querySelectorAll('.alert').forEach(alert => {
+                    alert.classList.add('d-none');
+                });
+                
+                // If custom message is provided, update the alert text
+                if (customMessage) {
+                    alertElement.textContent = customMessage;
+                }
+                
+                // Show this alert
+                alertElement.classList.remove('d-none');
+                alertElement.classList.add('fade-in');
+                
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    alertElement.classList.add('d-none');
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+</html> 
