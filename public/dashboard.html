@@ -145,49 +145,77 @@
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="col-md-6 mb-4">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="card-title mb-0">WhatsApp Connection</h5>
-                            </div>
-                            <div class="card-body">
-                                <div id="connectionStatus">
-                                    <p id="connectionMessage">Scan the QR code below with WhatsApp to connect the bot.</p>
-                                    <div class="qr-container">
-                                        <div id="qrPlaceholder" class="text-center">
-                                            <div class="spinner-border text-primary" role="status">
-                                                <span class="visually-hidden">Loading...</span>
+                <!-- Add tabs for different sections -->
+                <ul class="nav nav-tabs mb-3" id="dashboardTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="connection-tab" data-bs-toggle="tab" data-bs-target="#connection" type="button" role="tab" aria-controls="connection" aria-selected="true">Connection</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="console-tab" data-bs-toggle="tab" data-bs-target="#console" type="button" role="tab" aria-controls="console" aria-selected="false">Console Logs</button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="dashboardTabsContent">
+                    <!-- Connection tab content -->
+                    <div class="tab-pane fade show active" id="connection" role="tabpanel" aria-labelledby="connection-tab">
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="card-title mb-0">WhatsApp Connection</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="connectionStatus">
+                                            <p id="connectionMessage">Scan the QR code below with WhatsApp to connect the bot.</p>
+                                            <div class="qr-container">
+                                                <div id="qrPlaceholder" class="text-center">
+                                                    <div class="spinner-border text-primary" role="status">
+                                                        <span class="visually-hidden">Loading...</span>
+                                                    </div>
+                                                    <p class="mt-2">Generating QR code...</p>
+                                                </div>
+                                                <img id="qrCode" class="qr-image d-none" src="" alt="WhatsApp QR Code">
                                             </div>
-                                            <p class="mt-2">Generating QR code...</p>
                                         </div>
-                                        <img id="qrCode" class="qr-image d-none" src="" alt="WhatsApp QR Code">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6 mb-4">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="card-title mb-0">Bot Information</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <ul class="list-group list-group-flush">
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                Status
+                                                <span id="botStatus" class="badge bg-primary rounded-pill">Initializing</span>
+                                            </li>
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                Last Authenticated
+                                                <span id="lastAuth">Never</span>
+                                            </li>
+                                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                Active Since
+                                                <span id="activeSince">Not active</span>
+                                            </li>
+                                        </ul>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="col-md-6 mb-4">
+
+                    <!-- Console Logs tab content -->
+                    <div class="tab-pane fade" id="console" role="tabpanel" aria-labelledby="console-tab">
                         <div class="card">
-                            <div class="card-header">
-                                <h5 class="card-title mb-0">Bot Information</h5>
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Server Console Output</h5>
+                                <button id="clearConsole" class="btn btn-sm btn-outline-secondary">Clear</button>
                             </div>
                             <div class="card-body">
-                                <ul class="list-group list-group-flush">
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        Status
-                                        <span id="botStatus" class="badge bg-primary rounded-pill">Initializing</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        Last Authenticated
-                                        <span id="lastAuth">Never</span>
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                        Active Since
-                                        <span id="activeSince">Not active</span>
-                                    </li>
-                                </ul>
+                                <div id="consoleOutput" class="bg-dark text-light p-3 rounded" style="height: 500px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;">Waiting for logs...</div>
                             </div>
                         </div>
                     </div>
@@ -211,6 +239,8 @@
             const botStatus = document.getElementById('botStatus');
             const lastAuth = document.getElementById('lastAuth');
             const activeSince = document.getElementById('activeSince');
+            const consoleOutput = document.getElementById('consoleOutput');
+            const clearConsoleBtn = document.getElementById('clearConsole');
 
             // QR Code received
             socket.on('qrCode', function(qrCodeData) {
@@ -224,6 +254,9 @@
                 statusText.textContent = 'Waiting for scan...';
                 botStatus.textContent = 'Waiting for scan';
                 botStatus.className = 'badge bg-warning rounded-pill';
+                
+                // Add to console log
+                addConsoleLog('QR Code generated. Waiting for scan...');
             });
 
             // Bot status updates
@@ -243,35 +276,99 @@
                         const now = new Date().toLocaleString();
                         lastAuth.textContent = now;
                         activeSince.textContent = now;
+                        
+                        // Add to console log
+                        addConsoleLog('Bot is connected and ready!', 'success');
                         break;
                         
                     case 'auth_failure':
                         connectionMessage.textContent = 'Authentication failed. Please try scanning the QR code again.';
                         
                         statusIndicator.className = 'status-indicator status-disconnected';
-                        statusText.textContent = 'Authentication Failed';
-                        botStatus.textContent = 'Error';
+                        statusText.textContent = 'Authentication failed';
+                        botStatus.textContent = 'Auth Failed';
                         botStatus.className = 'badge bg-danger rounded-pill';
+                        
+                        // Add to console log
+                        addConsoleLog('Authentication failed: ' + (data.message || ''), 'error');
                         break;
                         
                     case 'disconnected':
-                        connectionMessage.textContent = 'Bot disconnected. Waiting for new QR code...';
+                        connectionMessage.textContent = 'Bot has been disconnected. Please refresh and try again.';
                         
                         statusIndicator.className = 'status-indicator status-disconnected';
                         statusText.textContent = 'Disconnected';
-                        botStatus.textContent = 'Disconnected';
+                        botStatus.textContent = 'Offline';
                         botStatus.className = 'badge bg-danger rounded-pill';
+                        
+                        // Add to console log
+                        addConsoleLog('Bot disconnected: ' + (data.reason || ''), 'error');
+                        break;
+                        
+                    case 'error':
+                        connectionMessage.textContent = 'Error: ' + (data.message || 'Unknown error');
+                        
+                        statusIndicator.className = 'status-indicator status-disconnected';
+                        statusText.textContent = 'Error';
+                        botStatus.textContent = 'Error';
+                        botStatus.className = 'badge bg-danger rounded-pill';
+                        
+                        // Add to console log
+                        addConsoleLog('Error: ' + (data.message || 'Unknown error'), 'error');
                         break;
                 }
             });
-
-            // Connection error
-            socket.on('connect_error', function() {
-                statusIndicator.className = 'status-indicator status-disconnected';
-                statusText.textContent = 'Connection Error';
-                botStatus.textContent = 'Error';
-                botStatus.className = 'badge bg-danger rounded-pill';
+            
+            // Console logs handling
+            socket.on('console', function(data) {
+                addConsoleLog(data.message, data.type);
             });
+            
+            // Function to add log entry to console output
+            function addConsoleLog(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                let logClass = '';
+                let prefix = '';
+                
+                switch(type) {
+                    case 'error':
+                        logClass = 'text-danger';
+                        prefix = 'ERROR: ';
+                        break;
+                    case 'warning':
+                        logClass = 'text-warning';
+                        prefix = 'WARNING: ';
+                        break;
+                    case 'success':
+                        logClass = 'text-success';
+                        prefix = 'SUCCESS: ';
+                        break;
+                    case 'message':
+                        logClass = 'text-info';
+                        prefix = 'MESSAGE: ';
+                        break;
+                    default:
+                        logClass = 'text-light';
+                        prefix = 'INFO: ';
+                }
+                
+                const logEntry = document.createElement('div');
+                logEntry.className = logClass;
+                logEntry.innerHTML = `[${timestamp}] ${prefix}${message}`;
+                consoleOutput.appendChild(logEntry);
+                
+                // Auto-scroll to bottom
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            }
+            
+            // Clear console button
+            clearConsoleBtn.addEventListener('click', function() {
+                consoleOutput.innerHTML = '';
+                addConsoleLog('Console cleared', 'info');
+            });
+            
+            // Initial log entry
+            addConsoleLog('Console initialized. Waiting for logs...', 'info');
         });
     </script>
 </body>
