@@ -191,6 +191,28 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h5 class="card-title mb-0">WhatsApp Session</h5>
+                                    <span id="session-status" class="badge bg-secondary">Unknown</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="whatsappSession" class="form-label">Session Data</label>
+                                        <textarea class="form-control api-key-field" id="whatsappSession" name="whatsappSession" rows="3" placeholder="base64:..."></textarea>
+                                        <div class="form-text">WhatsApp session data for persistent authentication. This value is automatically updated when you authenticate with WhatsApp.</div>
+                                    </div>
+                                    <div class="d-flex">
+                                        <button type="button" id="update-session-btn" class="btn btn-warning me-2">Update Session</button>
+                                        <button type="button" id="clear-session-btn" class="btn btn-outline-danger">Clear Session</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
                         <button type="button" id="reset-btn" class="btn btn-outline-secondary me-md-2">Reset to Defaults</button>
@@ -222,7 +244,8 @@
                     openaiApiKey: document.getElementById('openaiApiKey').value,
                     tourvisorLogin: document.getElementById('tourvisorLogin').value,
                     tourvisorPass: document.getElementById('tourvisorPass').value,
-                    systemPrompt: document.getElementById('systemPrompt').value
+                    systemPrompt: document.getElementById('systemPrompt').value,
+                    whatsappSession: document.getElementById('whatsappSession').value
                 };
                 
                 saveSettings(formData);
@@ -231,6 +254,55 @@
             // Reset button
             resetBtn.addEventListener('click', function() {
                 fetchSettings();
+            });
+            
+            // Update session button
+            document.getElementById('update-session-btn').addEventListener('click', function() {
+                const sessionData = document.getElementById('whatsappSession').value;
+                if (!sessionData) {
+                    showAlert(errorAlert, 'Please enter valid session data');
+                    return;
+                }
+                
+                socket.emit('updateWhatsAppSession', { session: sessionData });
+            });
+            
+            // Clear session button
+            document.getElementById('clear-session-btn').addEventListener('click', function() {
+                document.getElementById('whatsappSession').value = '';
+                document.getElementById('session-status').className = 'badge bg-danger';
+                document.getElementById('session-status').textContent = 'Cleared';
+            });
+            
+            // Listen for session update responses
+            socket.on('sessionUpdated', function(data) {
+                if (data.success) {
+                    showAlert(successAlert, 'WhatsApp session updated successfully!');
+                    document.getElementById('session-status').className = 'badge bg-success';
+                    document.getElementById('session-status').textContent = 'Active';
+                } else {
+                    showAlert(errorAlert, data.message || 'Failed to update WhatsApp session');
+                }
+            });
+            
+            // Check WhatsApp session status
+            socket.emit('getWhatsAppSession');
+            socket.on('whatsAppSession', function(data) {
+                const sessionStatus = document.getElementById('session-status');
+                if (data.isValid) {
+                    sessionStatus.className = 'badge bg-success';
+                    sessionStatus.textContent = 'Active';
+                } else if (data.session) {
+                    sessionStatus.className = 'badge bg-warning';
+                    sessionStatus.textContent = 'Pending';
+                } else {
+                    sessionStatus.className = 'badge bg-danger';
+                    sessionStatus.textContent = 'Not Set';
+                }
+                
+                if (data.session) {
+                    document.getElementById('whatsappSession').value = data.session;
+                }
             });
             
             // Fetch settings from API
@@ -247,6 +319,12 @@
                         document.getElementById('tourvisorLogin').value = data.tourvisorLogin || '';
                         document.getElementById('tourvisorPass').value = data.tourvisorPass || '';
                         document.getElementById('systemPrompt').value = data.systemPrompt || '';
+                        
+                        if (data.whatsappSession) {
+                            document.getElementById('whatsappSession').value = data.whatsappSession;
+                            // Check session status
+                            socket.emit('getWhatsAppSession');
+                        }
                     })
                     .catch(error => {
                         console.error('Error fetching settings:', error);
