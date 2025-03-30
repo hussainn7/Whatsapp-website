@@ -81,11 +81,25 @@ class SessionManager {
                 // Convert to base64 to avoid escape issues
                 const base64Data = Buffer.from(sessionData).toString('base64');
                 
-                // Log instructions for setting the environment variable
-                console.log('\n==== WHATSAPP SESSION DATA ====');
+                // Make it VERY visible in the console
+                console.log('\n\n');
+                console.log('===============================================================');
+                console.log('=================== WHATSAPP SESSION DATA ====================');
+                console.log('===============================================================');
                 console.log('Set this as WHATSAPP_SESSION environment variable in your deployment:');
                 console.log(`base64:${base64Data}`);
-                console.log('================================\n');
+                console.log('===============================================================');
+                console.log('COPY THIS VALUE AND SAVE IT TO YOUR SETTINGS OR ENVIRONMENT VARIABLES');
+                console.log('===============================================================\n\n');
+                
+                // Try to write the session data to an accessible file too
+                try {
+                    const sessionBackupFile = path.join(process.cwd(), 'whatsapp_session_backup.txt');
+                    fs.writeFileSync(sessionBackupFile, `base64:${base64Data}`);
+                    console.log(`Session data also saved to: ${sessionBackupFile}`);
+                } catch (backupError) {
+                    console.error('Could not save backup file:', backupError);
+                }
                 
                 return base64Data;
             }
@@ -101,18 +115,44 @@ class SessionManager {
      */
     hasValidSession() {
         try {
+            // First check if we have a local file
             if (fs.existsSync(this.sessionFile)) {
                 const sessionData = fs.readFileSync(this.sessionFile, 'utf8');
                 const sessionObj = JSON.parse(sessionData);
                 
                 // Basic validation - if it has WABrowserId it's likely valid
-                return sessionObj && sessionObj.WABrowserId;
+                if (sessionObj && sessionObj.WABrowserId) {
+                    return true;
+                }
+            }
+            
+            // If no local file, check environment variable
+            const envSession = process.env.WHATSAPP_SESSION;
+            if (envSession) {
+                // Try to restore it
+                return this.restoreSessionFromEnv();
             }
         } catch (error) {
             console.error('SessionManager: Error checking session validity:', error);
         }
         
         return false;
+    }
+    
+    /**
+     * Export session data as a formatted string ready for environment variables
+     */
+    getSessionDataForEnv() {
+        try {
+            if (fs.existsSync(this.sessionFile)) {
+                const sessionData = fs.readFileSync(this.sessionFile, 'utf8');
+                const base64Data = Buffer.from(sessionData).toString('base64');
+                return `base64:${base64Data}`;
+            }
+        } catch (error) {
+            console.error('SessionManager: Error exporting session data:', error);
+        }
+        return null;
     }
 }
 
