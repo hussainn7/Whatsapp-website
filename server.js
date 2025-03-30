@@ -15,6 +15,50 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
+// Global variables
+let latestQrCode = null;
+let isAuthenticated = false;
+// Store recent logs for new connections
+const recentLogs = [];
+const MAX_RECENT_LOGS = 100;
+
+// Function to add a log entry to the recent logs array
+function addRecentLog(message, type) {
+  recentLogs.push({ message, type });
+  if (recentLogs.length > MAX_RECENT_LOGS) {
+    recentLogs.shift(); // Remove oldest log
+  }
+}
+
+// Function to emit console logs to connected clients
+function emitConsoleLog(message, type) {
+  // Add to recent logs
+  addRecentLog(message, type);
+  // Emit to all connected clients
+  io.emit('console', { message, type });
+}
+
+// Setup console log capture
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+// Override console methods to capture logs
+console.log = function() {
+  originalConsoleLog.apply(console, arguments);
+  emitConsoleLog(Array.from(arguments).join(' '), 'info');
+};
+
+console.error = function() {
+  originalConsoleError.apply(console, arguments);
+  emitConsoleLog(Array.from(arguments).join(' '), 'error');
+};
+
+console.warn = function() {
+  originalConsoleWarn.apply(console, arguments);
+  emitConsoleLog(Array.from(arguments).join(' '), 'warning');
+};
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -26,10 +70,6 @@ app.use(session({
   cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
 }));
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Global variables
-let latestQrCode = null;
-let isAuthenticated = false;
 
 // Admin credentials (in a real app, these would be stored securely)
 const adminCredentials = {
@@ -114,6 +154,57 @@ io.on('connection', (socket) => {
   if (latestQrCode) {
     socket.emit('qrCode', latestQrCode);
   }
+  
+  // Send recent logs to new connections
+  recentLogs.forEach(log => {
+    socket.emit('console', log);
+  });
+  
+  // Handle session update requests from the admin panel
+  socket.on('updateWhatsAppSession', (data) => {
+    try {
+      if (data && data.session) {
+        console.log('Received manual session update from admin panel');
+        
+        // Update settings with the new session data
+        const settings = JSON.parse(fs.readFileSync('settings.json', 'utf8'));
+        settings.whatsappSession = data.session;
+        fs.writeFileSync('settings.json', JSON.stringify(settings, null, 2));
+        
+        // Emit settings update event
+        global.eventEmitter.emit('settingsUpdated', settings);
+        
+        socket.emit('sessionUpdated', { 
+          success: true, 
+          message: 'WhatsApp session updated successfully' 
+        });
+      }
+    } catch (error) {
+      console.error('Error updating WhatsApp session:', error);
+      socket.emit('sessionUpdated', { 
+        success: false, 
+        message: 'Failed to update WhatsApp session: ' + error.message 
+      });
+    }
+  });
+  
+  // Handle request for current session data
+  socket.on('getWhatsAppSession', () => {
+    try {
+      const settings = JSON.parse(fs.readFileSync('settings.json', 'utf8'));
+      socket.emit('whatsAppSession', { 
+        session: settings.whatsappSession || '',
+        isValid: bot.isAuthenticated || false
+      });
+    } catch (error) {
+      console.error('Error getting WhatsApp session:', error);
+      socket.emit('whatsAppSession', { 
+        session: '',
+        isValid: false,
+        error: error.message
+      });
+    }
+  });
   
   socket.on('disconnect', () => {
     console.log('Client disconnected');
