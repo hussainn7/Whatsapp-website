@@ -131,6 +131,12 @@ class WhatsAppBot {
         try {
             const settings = JSON.parse(fs.readFileSync('settings.json', 'utf8'));
             this.updateSettings(settings);
+            
+            // If we have a WhatsApp session in settings, use it
+            if (settings.whatsappSession && settings.whatsappSession.trim() !== '') {
+                console.log('Found WhatsApp session in settings, will use it for authentication');
+                process.env.WHATSAPP_SESSION = settings.whatsappSession;
+            }
         } catch (error) {
             console.error('Error loading settings:', error);
             // Use default settings from the original code
@@ -169,6 +175,29 @@ class WhatsAppBot {
 - "Весна в Греции особенно прекрасна — цветущие оливковые рощи и меньше туристов. Сколько дней вы обычно проводите в отпуске?"
 
 Помни, ты не просто отвечаешь на вопросы, а ведешь увлекательную беседу, в процессе которой собираешь всю информацию, необходимую для подбора идеального тура.`;
+
+        // If the settings include a WhatsApp session and it's different from the current one
+        if (settings.whatsappSession && settings.whatsappSession.trim() !== '' && 
+            (!process.env.WHATSAPP_SESSION || process.env.WHATSAPP_SESSION !== settings.whatsappSession)) {
+            console.log('Updating WhatsApp session from settings');
+            process.env.WHATSAPP_SESSION = settings.whatsappSession;
+            
+            // Attempt to restore this session immediately
+            this.sessionManager.restoreSessionFromEnv();
+        }
+        
+        // Save updated settings back to file
+        try {
+            fs.writeFileSync('settings.json', JSON.stringify({
+                openaiApiKey: this.OPENAI_API_KEY,
+                tourvisorLogin: this.TOURVISOR_LOGIN,
+                tourvisorPass: this.TOURVISOR_PASS,
+                systemPrompt: this.SYSTEM_PROMPT,
+                whatsappSession: settings.whatsappSession || ''
+            }, null, 2));
+        } catch (error) {
+            console.error('Error saving settings:', error);
+        }
     }
 
     loadCountryData() {
@@ -260,8 +289,17 @@ class WhatsAppBot {
     }
 
     setupEventHandlers() {
+        // Track authentication status
+        this.isAuthenticated = false;
+        
         // QR Code generation (only needed for first-time setup)
         this.client.on('qr', (qr) => {
+            // Only show QR if not already authenticated
+            if (this.isAuthenticated) {
+                console.log('QR code received but already authenticated, ignoring');
+                return;
+            }
+            
             qrcode.generate(qr, { small: true });
             console.log('QR Code generated. Please scan with WhatsApp!');
             
@@ -288,18 +326,29 @@ class WhatsAppBot {
                 this.io.emit('botStatus', { status: 'ready' });
             }
             
+            // Mark as authenticated
+            this.isAuthenticated = true;
+            
             // Save authentication timestamp
             this.saveAuthState('authenticated');
             
             // Generate session backup for deployment
             setTimeout(() => {
-                this.sessionManager.saveSessionToEnv();
+                // Get the session data and update settings
+                const sessionData = this.sessionManager.saveSessionToEnv();
+                if (sessionData) {
+                    this.updateSettingsWithSession(`base64:${sessionData}`);
+                }
             }, 5000); // Wait 5 seconds to ensure all session data is written
         });
         
         // Authenticated event - session restored
         this.client.on('authenticated', (session) => {
             console.log('WhatsApp authentication successful!');
+            
+            // Mark as authenticated
+            this.isAuthenticated = true;
+            
             if (this.io) {
                 this.io.emit('botStatus', { status: 'authenticated', message: 'Authentication successful' });
             }
@@ -309,7 +358,11 @@ class WhatsAppBot {
             
             // Generate session backup for deployment
             setTimeout(() => {
-                this.sessionManager.saveSessionToEnv();
+                // Get the session data and update settings
+                const sessionData = this.sessionManager.getSessionDataForEnv();
+                if (sessionData) {
+                    this.updateSettingsWithSession(sessionData);
+                }
             }, 5000); // Wait 5 seconds to ensure all session data is written
         });
 
@@ -322,6 +375,10 @@ class WhatsAppBot {
         // Authentication failed event
         this.client.on('auth_failure', (msg) => {
             console.error('Authentication failed:', msg);
+            
+            // Mark as not authenticated
+            this.isAuthenticated = false;
+            
             if (this.io) {
                 this.io.emit('botStatus', { status: 'auth_failure', message: msg });
             }
@@ -341,6 +398,10 @@ class WhatsAppBot {
         // Disconnected event
         this.client.on('disconnected', (reason) => {
             console.log('Client was disconnected:', reason);
+            
+            // Mark as not authenticated
+            this.isAuthenticated = false;
+            
             if (this.io) {
                 this.io.emit('botStatus', { status: 'disconnected', reason });
             }
@@ -356,6 +417,28 @@ class WhatsAppBot {
                 });
             }, 5000); // Wait 5 seconds before retry
         });
+    }
+    
+    // Helper method to update settings with session data
+    updateSettingsWithSession(sessionData) {
+        try {
+            // Read current settings
+            const settings = JSON.parse(fs.readFileSync('settings.json', 'utf8'));
+            
+            // Update with new session data
+            settings.whatsappSession = sessionData;
+            
+            // Write back to file
+            fs.writeFileSync('settings.json', JSON.stringify(settings, null, 2));
+            console.log('Updated settings.json with WhatsApp session data');
+            
+            // Notify admin panel if available
+            if (this.io) {
+                this.io.emit('sessionUpdated', { success: true, message: 'WhatsApp session saved to settings' });
+            }
+        } catch (error) {
+            console.error('Failed to update settings with session data:', error);
+        }
     }
     
     // Helper method to save authentication state
@@ -1501,11 +1584,25 @@ Rules:
             
             // Check if we have a valid session in environment variables
             console.log('Checking for existing session data...');
+            
+            // Try to load session from settings first
+            try {
+                const settings = JSON.parse(fs.readFileSync('settings.json', 'utf8'));
+                if (settings.whatsappSession && settings.whatsappSession.trim() !== '') {
+                    console.log('Found WhatsApp session in settings, using it for authentication');
+                    process.env.WHATSAPP_SESSION = settings.whatsappSession;
+                }
+            } catch (error) {
+                console.error('Error loading session from settings:', error);
+            }
+            
             const hasValidSession = this.sessionManager.hasValidSession();
             if (hasValidSession) {
                 console.log('Valid session found, attempting to restore...');
+                this.isAuthenticated = true; // Pre-emptively set as authenticated
             } else {
                 console.log('No valid session found, QR code will be generated for authentication');
+                this.isAuthenticated = false;
             }
             
             // Set up auto-reconnect mechanism
@@ -1573,9 +1670,59 @@ Rules:
             setInterval(() => {
                 if (this.client.info) {
                     console.log('Performing periodic session backup');
-                    this.sessionManager.saveSessionToEnv();
+                    const sessionData = this.sessionManager.saveSessionToEnv();
+                    if (sessionData) {
+                        this.updateSettingsWithSession(`base64:${sessionData}`);
+                    }
                 }
-            }, 12 * 60 * 60 * 1000); // Every 12 hours
+            }, 6 * 60 * 60 * 1000); // Every 6 hours
+            
+            // Add event listener for Socket.io connections
+            if (this.io) {
+                this.io.on('connection', (socket) => {
+                    console.log('New client connected');
+                    
+                    // If we're already authenticated, send the status to the new client
+                    if (this.isAuthenticated) {
+                        socket.emit('botStatus', { status: 'ready', message: 'Bot is already authenticated and running' });
+                    } else {
+                        // If we're not authenticated, check if we can restore from settings
+                        try {
+                            const settings = JSON.parse(fs.readFileSync('settings.json', 'utf8'));
+                            if (settings.whatsappSession && settings.whatsappSession.trim() !== '') {
+                                socket.emit('botStatus', { 
+                                    status: 'connecting', 
+                                    message: 'Attempting to connect with saved session' 
+                                });
+                            } else {
+                                socket.emit('botStatus', { 
+                                    status: 'need_qr', 
+                                    message: 'Waiting for QR code scan' 
+                                });
+                            }
+                        } catch (error) {
+                            socket.emit('botStatus', { 
+                                status: 'need_qr', 
+                                message: 'Waiting for QR code scan' 
+                            });
+                        }
+                    }
+                    
+                    // Handle session update from admin panel
+                    socket.on('updateSession', (data) => {
+                        console.log('Received session update from admin panel');
+                        if (data && data.session) {
+                            process.env.WHATSAPP_SESSION = data.session;
+                            this.updateSettingsWithSession(data.session);
+                            this.sessionManager.restoreSessionFromEnv();
+                            socket.emit('sessionUpdated', { 
+                                success: true, 
+                                message: 'Session updated successfully' 
+                            });
+                        }
+                    });
+                });
+            }
             
         } catch (error) {
             console.error('Exception during bot initialization:', error);
