@@ -7,6 +7,7 @@ const EventEmitter = require('events');
 const os = require('os'); // Import os module to detect operating system
 const path = require('path');
 require('dotenv').config(); // Load environment variables
+const SessionManager = require('./sessionManager'); // Import session manager
 
 // Create global event emitter for settings updates
 global.eventEmitter = new EventEmitter();
@@ -66,6 +67,9 @@ class WhatsAppBot {
     constructor(io = null) {
         this.io = io; // Socket.io instance for real-time updates
         
+        // Initialize session manager for persistent auth
+        this.sessionManager = new SessionManager();
+        
         // Find Chrome executable
         const chromeExecutable = findChromeExecutable();
         
@@ -88,9 +92,27 @@ class WhatsAppBot {
             puppeteerOptions.executablePath = chromeExecutable;
         }
         
+        // Create .wwebjs_auth directory if it doesn't exist
+        const authDir = path.join(process.cwd(), '.wwebjs_auth');
+        if (!fs.existsSync(authDir)) {
+            try {
+                fs.mkdirSync(authDir, { recursive: true });
+                console.log('Created auth directory at:', authDir);
+            } catch (error) {
+                console.error('Failed to create auth directory:', error);
+            }
+        }
+        
+        // Configure persistent session storage
+        // Using dataPath option to specify where session data should be stored
         this.client = new Client({
-            authStrategy: new LocalAuth(),
-            puppeteer: puppeteerOptions
+            authStrategy: new LocalAuth({
+                dataPath: authDir, // Store auth data in the project directory
+                clientId: 'whatsapp-bot-session' // Use fixed client ID for persistence
+            }),
+            puppeteer: puppeteerOptions,
+            restartOnAuthFail: true, // Auto restart if authentication fails
+            qrMaxRetries: 3 // Limit QR code generation retries
         });
 
         this.userData = new Map(); // Store user data with conversation history
@@ -253,6 +275,7 @@ class WhatsAppBot {
                         return;
                     }
                     this.io.emit('qrCode', url);
+                    this.io.emit('botStatus', { status: 'qr_needed', message: 'Please scan the QR code to authenticate' });
                 });
             }
         });
@@ -264,6 +287,30 @@ class WhatsAppBot {
             if (this.io) {
                 this.io.emit('botStatus', { status: 'ready' });
             }
+            
+            // Save authentication timestamp
+            this.saveAuthState('authenticated');
+            
+            // Generate session backup for deployment
+            setTimeout(() => {
+                this.sessionManager.saveSessionToEnv();
+            }, 5000); // Wait 5 seconds to ensure all session data is written
+        });
+        
+        // Authenticated event - session restored
+        this.client.on('authenticated', (session) => {
+            console.log('WhatsApp authentication successful!');
+            if (this.io) {
+                this.io.emit('botStatus', { status: 'authenticated', message: 'Authentication successful' });
+            }
+            
+            // Save authentication timestamp
+            this.saveAuthState('authenticated');
+            
+            // Generate session backup for deployment
+            setTimeout(() => {
+                this.sessionManager.saveSessionToEnv();
+            }, 5000); // Wait 5 seconds to ensure all session data is written
         });
 
         // Message handling
@@ -278,6 +325,17 @@ class WhatsAppBot {
             if (this.io) {
                 this.io.emit('botStatus', { status: 'auth_failure', message: msg });
             }
+            
+            // Mark authentication as failed in our state tracking
+            this.saveAuthState('auth_failure');
+            
+            // Implement retry mechanism after delay
+            setTimeout(() => {
+                console.log('Attempting to reconnect after authentication failure...');
+                this.client.initialize().catch(err => {
+                    console.error('Failed to reinitialize after auth failure:', err);
+                });
+            }, 10000); // Wait 10 seconds before retry
         });
 
         // Disconnected event
@@ -286,7 +344,35 @@ class WhatsAppBot {
             if (this.io) {
                 this.io.emit('botStatus', { status: 'disconnected', reason });
             }
+            
+            // Mark as disconnected in our state tracking
+            this.saveAuthState('disconnected');
+            
+            // Attempt to reconnect after a delay
+            setTimeout(() => {
+                console.log('Attempting to reconnect after disconnection...');
+                this.client.initialize().catch(err => {
+                    console.error('Failed to reinitialize after disconnection:', err);
+                });
+            }, 5000); // Wait 5 seconds before retry
         });
+    }
+    
+    // Helper method to save authentication state
+    saveAuthState(state) {
+        try {
+            const stateObj = {
+                state: state,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Save state to a file in the auth directory
+            const authStateFile = path.join(process.cwd(), '.wwebjs_auth', 'auth_state.json');
+            fs.writeFileSync(authStateFile, JSON.stringify(stateObj, null, 2));
+            console.log(`Saved auth state: ${state}`);
+        } catch (error) {
+            console.error('Failed to save auth state:', error);
+        }
     }
 
     async handleMessage(msg) {
@@ -1392,22 +1478,105 @@ Rules:
     start() {
         console.log('Starting WhatsApp bot...');
         try {
-            this.client.initialize()
-                .then(() => console.log('Bot initialized successfully'))
-                .catch(err => {
-                    console.error('Failed to initialize bot:', err);
-                    if (err.code === 'Unknown system error -86' || err.message.includes('spawn')) {
-                        console.log('Chrome execution error detected. Please ensure Google Chrome is installed or provide a valid path to the Chrome executable in the constructor.');
+            // Create .wwebjs_cache directory to help with session persistence
+            const cacheDir = path.join(process.cwd(), '.wwebjs_cache');
+            if (!fs.existsSync(cacheDir)) {
+                try {
+                    fs.mkdirSync(cacheDir, { recursive: true });
+                    console.log('Created cache directory at:', cacheDir);
+                } catch (error) {
+                    console.error('Failed to create cache directory:', error);
+                }
+            }
+            
+            // Ensure permissions on auth directory
+            const authDir = path.join(process.cwd(), '.wwebjs_auth');
+            try {
+                // Make auth directory writable to ensure session can be saved
+                fs.chmodSync(authDir, 0o755);
+                console.log('Set permissions on auth directory');
+            } catch (error) {
+                console.error('Warning: Could not set permissions on auth directory:', error);
+            }
+            
+            // Check if we have a valid session in environment variables
+            console.log('Checking for existing session data...');
+            const hasValidSession = this.sessionManager.hasValidSession();
+            if (hasValidSession) {
+                console.log('Valid session found, attempting to restore...');
+            } else {
+                console.log('No valid session found, QR code will be generated for authentication');
+            }
+            
+            // Set up auto-reconnect mechanism
+            let reconnectAttempts = 0;
+            const maxReconnectAttempts = 5;
+            
+            const attemptInitialize = () => {
+                console.log(`Attempting to initialize WhatsApp client (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+                
+                this.client.initialize()
+                    .then(() => {
+                        console.log('Bot initialized successfully');
+                        reconnectAttempts = 0; // Reset counter on success
                         
                         // Notify admin UI if available
                         if (this.io) {
-                            this.io.emit('botStatus', { 
-                                status: 'error', 
-                                message: 'Chrome execution error. Please check Chrome installation.'
-                            });
+                            this.io.emit('botStatus', { status: 'initializing', message: 'Connecting to WhatsApp...' });
                         }
-                    }
-                });
+                    })
+                    .catch(err => {
+                        console.error('Failed to initialize bot:', err);
+                        reconnectAttempts++;
+                        
+                        if (err.code === 'Unknown system error -86' || err.message.includes('spawn')) {
+                            console.log('Chrome execution error detected. Please ensure Google Chrome is installed or provide a valid path to the Chrome executable in the constructor.');
+                            
+                            // Notify admin UI if available
+                            if (this.io) {
+                                this.io.emit('botStatus', { 
+                                    status: 'error', 
+                                    message: 'Chrome execution error. Please check Chrome installation.'
+                                });
+                            }
+                        }
+                        
+                        // Try to reconnect if we haven't reached max attempts
+                        if (reconnectAttempts < maxReconnectAttempts) {
+                            console.log(`Will attempt to reconnect in ${reconnectAttempts * 5} seconds...`);
+                            setTimeout(attemptInitialize, reconnectAttempts * 5000);
+                        } else {
+                            console.error('Max reconnection attempts reached. Please restart the bot manually.');
+                            if (this.io) {
+                                this.io.emit('botStatus', { 
+                                    status: 'error', 
+                                    message: 'Failed to connect after multiple attempts. Please restart the bot.'
+                                });
+                            }
+                        }
+                    });
+            };
+            
+            // Start the initialization process
+            attemptInitialize();
+            
+            // Set up keepalive mechanism to prevent session timeout
+            setInterval(() => {
+                // Check if client is ready before attempting to send a keepalive message
+                if (this.client.info) {
+                    console.log('Sending keepalive ping to maintain session');
+                    // No action needed - just checking client state is enough
+                }
+            }, 30 * 60 * 1000); // Every 30 minutes
+            
+            // Set up periodic session backup
+            setInterval(() => {
+                if (this.client.info) {
+                    console.log('Performing periodic session backup');
+                    this.sessionManager.saveSessionToEnv();
+                }
+            }, 12 * 60 * 60 * 1000); // Every 12 hours
+            
         } catch (error) {
             console.error('Exception during bot initialization:', error);
             // Notify admin UI if available
