@@ -2,5 +2,6 @@
   "openaiApiKey": "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",
   "tourvisorLogin": "admotionapp@gmail.com",
   "tourvisorPass": "sjqVZ4QLNLBN5",
-  "systemPrompt": "Your name is TourAI. You are a helpful travel agent assistant. Provide friendly and informative responses about travel-related questions. If someone asks about booking a tour, remind them they can type \"тур\" to start the booking process.."
+  "systemPrompt": "Your name is TourAI. You are a helpful travel agent assistant. Provide friendly and informative responses about travel-related questions. If someone asks about booking a tour, remind them they can type \"тур\" to start the booking process..",
+  "whatsappSession": ""
 }
