@@ -623,7 +623,8 @@ After a few exchanges, if appropriate, remind them they can type "тур" to sea
         }
         
         // Ask about missing information one by one
-        if (!departureCity) {
+        if (!departureCity && !userData.tourSearchData.askedAboutDeparture) {
+            userData.tourSearchData.askedAboutDeparture = true;
             const options = ['Из какого города планируете вылет?', 
                             'Откуда бы вы хотели начать путешествие?', 
                             'Укажите, пожалуйста, город вылета.'];
@@ -841,11 +842,19 @@ For example: {"departureCity":"Moscow","destinationCountry":"Turkey","nightsFrom
                 }
             }
             
-            // Update the user's tourSearchData with the extracted parameters
-            userData.tourSearchData = {
-                ...userData.tourSearchData,
-                ...tourData
+            // Merge with existing data, preserving previous values if they exist
+            const existingData = userData.tourSearchData || {};
+            const mergedData = {
+                departureCity: existingData.departureCity || tourData.departureCity,
+                destinationCountry: existingData.destinationCountry || tourData.destinationCountry,
+                nightsFrom: tourData.nightsFrom !== null ? tourData.nightsFrom : existingData.nightsFrom,
+                nightsTo: tourData.nightsTo !== null ? tourData.nightsTo : existingData.nightsTo,
+                adults: existingData.adults || tourData.adults,
+                children: existingData.children || tourData.children
             };
+
+            // Update the user's tourSearchData with the extracted parameters
+            userData.tourSearchData = mergedData;
             
             return userData.tourSearchData;
         } catch (error) {
@@ -927,7 +936,7 @@ ${tourData.children > 0 ? `👶 Детей: ${tourData.children}` : '👨‍👩
             if (result && result.requestid) {
                 await this.getSearchResults(result.requestid, msg);
             } else {
-                await this.safeSendMessage(msg, 'К сожалению, сейчас не удалось получить результаты поиска. Это бывает в период высокого спроса. Давайте попробуем немного изменить параметры? Напишите "тур" и мы начнем новый поиск.');
+                await this.safeSendMessage(msg, 'К сожалению, сейчас не удалось получить результаты поиска. Это бывает в период высокого спроса. Давайте попробуем немного изменить параметры? Напишите "тур", чтобы мы начали новый поиск.');
                 this.resetUserState(msg.from);
             }
         } catch (error) {
@@ -1731,6 +1740,78 @@ Rules:
                 this.io.emit('botStatus', { status: 'error', message: error.message });
             }
         }
+    }
+    
+    // Set up mechanisms to keep the session alive
+    setupReconnectionChecks() {
+        // Clear any existing interval
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+        }
+        
+        // Set up active keepalive interval (every 10 minutes)
+        this.reconnectInterval = setInterval(async () => {
+            try {
+                if (this.client && this.client.info) {
+                    console.log('Sending keepalive ping to maintain WhatsApp session...');
+                    
+                    // Execute a lightweight action that keeps the session active
+                    const state = await this.client.getState();
+                    console.log('Current WhatsApp state:', state);
+                    
+                    if (state === 'CONNECTED') {
+                        // Successfully connected - update auth state
+                        this.isAuthenticated = true;
+                        this.lastAuthTime = Date.now();
+                        
+                        // Save periodic session backup (every 1 hour)
+                        const hoursSinceLastAuth = (Date.now() - this.lastAuthTime) / (1000 * 60 * 60);
+                        if (hoursSinceLastAuth >= 1) {
+                            console.log('Performing periodic session backup after 1 hour');
+                            const sessionData = this.sessionManager.saveSessionToEnv();
+                            if (sessionData) {
+                                this.updateSettingsWithSession(`base64:${sessionData}`);
+                            }
+                        }
+                    } else {
+                        // Not connected - attempt to reconnect
+                        console.log('WhatsApp not connected, attempting to reconnect...');
+                        this.isAuthenticated = false;
+                        
+                        // Attempt to reinitialize if more than 5 minutes since last auth
+                        const timeSinceLastAuth = (Date.now() - (this.lastAuthTime || 0)) / (1000 * 60);
+                        if (timeSinceLastAuth > 5) {
+                            console.log('More than 5 minutes since last successful auth, reinitializing...');
+                            this.client.initialize().catch(err => {
+                                console.error('Failed to reinitialize during keepalive:', err);
+                            });
+                        }
+                    }
+                } else {
+                    console.log('Client not ready for keepalive, attempting to reinitialize...');
+                    this.isAuthenticated = false;
+                    
+                    // Restart the client if it's not responding
+                    this.client.initialize().catch(err => {
+                        console.error('Failed to reinitialize during keepalive (client not ready):', err);
+                    });
+                }
+            } catch (error) {
+                console.error('Error during keepalive check:', error);
+                
+                // If we got an error, try to reinitialize
+                this.isAuthenticated = false;
+                try {
+                    this.client.initialize().catch(err => {
+                        console.error('Failed to reinitialize after keepalive error:', err);
+                    });
+                } catch (initError) {
+                    console.error('Failed to call initialize during keepalive recovery:', initError);
+                }
+            }
+        }, 10 * 60 * 1000); // Check every 10 minutes
+        
+        console.log('Reconnection checks set up - will check connection every 10 minutes');
     }
 }
 
