@@ -148,9 +148,9 @@ class WhatsAppBot {
     }
 
     updateSettings(settings) {
-        this.OPENAI_API_KEY = settings.openaiApiKey || "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";
-        this.TOURVISOR_LOGIN = settings.tourvisorLogin || "admotionapp@gmail.com";
-        this.TOURVISOR_PASS = settings.tourvisorPass || "sjqVZ4QLNLBN5";
+        this.OPENAI_API_KEY = settings.openaiApiKey || "YOUR_KEY";
+        this.TOURVISOR_LOGIN = settings.tourvisorLogin || "YOUR_KEY";
+        this.TOURVISOR_PASS = settings.tourvisorPass || "YOUR_KEY";
         this.SYSTEM_PROMPT = settings.systemPrompt || `Ты — TourAI, опытный и дружелюбный консультант по путешествиям, который ведет естественные беседы.
 
 Твоя главная цель — вовлечь клиента в приятную беседу о путешествиях и плавно собрать всю необходимую информацию для подбора идеального тура.
